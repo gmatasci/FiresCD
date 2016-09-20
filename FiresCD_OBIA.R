@@ -11,66 +11,66 @@
 # - 
 
 ## STILL TO DO:
-# - integrate multiscale approach using seg.ids.df as a starting point
+# - segment all the fires beforehand and store segID in a table to query in the script
+# - include stratified RF
 # - introduce LOOCV within meanshift loop instead of OOB? (think if need to redo segmentation or just RF in 2nd LOOCV)
-# - check error: Error in `colnames<-`(`*tmp*`, value = c(NA, NA, NA, "elev_sd")) : length of 'dimnames' [2] not equal to array extent
 # - uniformize fire names (caps, etc.)
-# - split aspect in 2 components sin/cos
-# - new pixel level GT with majority class by surface within pixel
-# - save these raster files for visualization
 # - run as it is on complete set of new fire images (no masks): big fires will impact more the process than the current test on Tanghe and Liege
-# - base parameter selection and assessment on a mixed metric: 0.5*Kappa + 0.5*Fmeasure_PartialMortality
 
 ## SOLVED:
 # -V issue with images/projection -- OTB does not accept Lambert Conical when producing a shp, we have to save a sqlite file and then convert it to shp with ogr2ogr
 # -V fill ypred df based in indices and not on rbind -- done
 # -V read about OTB meanshift minsize -- the 2 other parameters control the size and shape of the segments: minsize is just used as a post-processing to merge segments smaller than a threshold
+# -V split aspect in 2 components sin/cos -- new variables: "aspect.sin_mean", "aspect.sin_sd", "aspect.cos_mean", "aspect.cos_sd"
+# -V check error: Error in `colnames<-`(`*tmp*`, value = c(NA, NA, NA, "elev_sd")) : length of 'dimnames' [2] not equal to array extent -- not appearing anymore
+# -V new pixel level GT with majority class by surface within pixel -- done by Nacho
+# -V integrate multiscale approach using seg.ids.df as a starting point -- now we 
+# -V base parameter selection and assessment on a mixed metric: 0.5*Kappa + 0.5*Fmeasure_PartialMortality
+
 
 #### INIT --------------------------------------------------------------------
 
-print('OBIA for fires CD')
-
 rm(list=ls())
 
-# param_file <- "D:/Research/ANALYSES/NationalImputationForestAttributes/BAP_Imputation_working/wkg/AllUTMzones_paramsGL.Rdata"
-# load(param_file)
-
-# source("D:/Research/ANALYSES/NationalImputationForestAttributes/BAP_Imputation_working/scripts_NationalImputationForestAttributes/Functions_NatImp.R")
+start.message <- sprintf("OBIA for fires CD, started running on %s", Sys.time())
+print(start.message)
 
 #### PARAMETERS ---------------------------------------------
 
 params <- list()
 
 ## General
-params$approach <- list("PixelBased", "ObjectSingleScale", "ObjectMultiScale")  ## Type of approach (so far only ObjectSingleScale is implemented):
+params$approach <- c("PixelBased", "ObjectSingleScale", "ObjectMultiScale")  ## Type of approach (so far only ObjectSingleScale is implemented):
                                                       ## PixelBased --> classic pixel-based approach 
                                                       ## ObjectSingleScale --> optimizes the parameters of a Meanshift segmentation with an object-based approach  
                                                       ## ObjectMultiScale --> features computes for different segmentations are stacked in the same df with a pixel-based approach
-# params$fires <- list("Liege")
-params$fires <- list("Liege", "Levellers")
-# params$fires <- list("Abraham", "Cone", "Flett", "Keane", "Leggo", "Levellers", "Liege",
-#                      "Mcarther", "Overflow", "Perry", "Rail", "Rainbow", "Steephill", "Tanghe")  ## fires to consider
-# params$fires <- list("Liege", "Rail", "Tanghe")  ## fires to consider
 
-params$subsetting <- T    ## to subset data for development purposes (still to implement)
-params$mort.classes <- c("0-5%", "6-25%", "95-100%")
-params$critical.class <- "Class: 6-25%"  ## to compute F-measure as an alternative, more detailed measure to Kappa
+params$fires <- c("Liege", "Tanghe", "Overflow")
+# params$fires <- c("Abraham", "Cone", "Flett", "Keane", "Leggo", "Levellers", "Liege",
+#                      "Mcarther", "Overflow", "Perry", "Rail", "Rainbow", "Steephill", "Tanghe")  ## fires to consider
+# params$fires <- c("Liege", "Rail", "Tanghe") 
+
+# params$subsetting <- T    ## to subset data for development purposes (still to implement)
+params$mort.class.names <- as.factor(c("0-5%", "6-25%", "95-100%"))
+params$mort.class.labels <- as.factor(c(1, 2, 3))
+params$critical.class.label <- 2  ## corresponding to class "6-25%", used to compute F-measure on this class (as an alternative, more detailed measure to Kappa)
 
 ## Meanshift
 params$nr.bands.seg <- 3
-params$meanshift.testmode <- T    ## if set to T saves each segmentation result (shp) with parameter values to visually inspect the segments
+params$meanshift.testmode <- F    ## if set to T saves each segmentation result (shp) with parameter values to visually inspect the segments
 # params$ranger.vect <- c(10, 50, 200) ## On SF imagebest with 50
 # params$spatialr.vect <- c(5, 20 , 50)  ## best with 5  
 # params$minsize.vect <- c(10, 100, 1000) ## best with 100
 # params$ranger.vect <- c(10, 20, 200, 500) ## On SF imagebest with 50
 # params$spatialr.vect <- c(3, 10, 20, 50)  ## best with 5
 # params$minsize.vect <- c(10) ## best with 100
-params$ranger.vect <- c(50, 100, 200, 300) ## Range radius: on SF imagebest with 50, Liege with 25
+# params$ranger.vect <- c(50, 100, 200, 300) ## Range radius: on SF imagebest with 50, Liege with 25
+params$ranger.vect <- c(100, 200) ## Range radius: on SF imagebest with 50, Liege with 25
 params$spatialr.vect <- c(10)  ## Spatial radius: on SF best with 5, Liege with 5
 params$minsize.vect <- c(5) ## Minimum object size: on SF best with 100, for fireswith 5, setting it to 0 just produces 1-pixel segments
-params$multisc.params <- data.frame(ranger=c(5, 20), spatialr=c(5, 20), minsize=c(5, 5))
+params$multisc <- data.frame(ranger=c(100, 200), spatialr=c(10, 10), minsize=c(5, 5))
 
-## RF 
+## RF
 params$base.predictors <- c("db1", "db2", "db3", "db4", "db5", "db7", 
                                "dNBR", "dTCG", "dTCB", "dTCW", "dNDVI", "dNDWI", 
                                "elev", "slope", "aspect.sin", "aspect.cos", 
@@ -80,8 +80,7 @@ params$obj.predictors <- c("db1_mean", "db1_sd", "db2_mean", "db2_sd", "db3_mean
                               "elev_mean", "elev_sd", "slope_mean", "slope_sd", "aspect.sin_mean", "aspect.sin_sd", "aspect.cos_mean", "aspect.cos_sd",
                               "EOSD_maj", "EOSD_majpct",
                               "nrpixseg")    ## list of final predictors computed at the object level
-# params$metric <- "Kappa"   ## not implemented yet
-# params$metric <- "MixKappaFm"  
+
 params$targ <- "CLASS"     ## target variable of the classification (column name of dataframe)
 params$seed <- 2016        ## seed to have same RF result
 params$parallel.RF <- T    ## whether to run RF in parallel or not
@@ -93,11 +92,6 @@ params$plot.importance <- F  ## whether to plot RF variable importance
 OTB.dir <- "C:/Users/gmatasci/Downloads/OTB-5.4.0-win64/bin"   ## directory in which OTB is located (input to function meanShiftOTB() )
 OGR.dir <- "C:/OSGeo4W64/bin"    ## directory in which OGR is located (input to function meanShiftOTB() ), uses ogr2ogr command for shp conversion from sqlite
 base.dir <- 'D:/Research/ANALYSES/FiresCD'    ## base working directory
-data.dir <- file.path(base.dir, "Data", fsep = .Platform$file.sep)   ## data directory (nothing should be written here)
-results.dir <- file.path(base.dir, "Results", fsep = .Platform$file.sep)   ## results directory (outputs go here)
-figures.dir <- file.path(base.dir, "Figures", fsep = .Platform$file.sep)   ## figures directory (figures go here)
-temp.dir <- file.path(data.dir, "temp")  ## directory for temporary files like the segmentation shps (overwritten each time)
-if (!file.exists(temp.dir)) {dir.create(temp.dir, showWarnings=F, recursive=T)}  ## create it
 
 #### LOAD PACKAGES ----------------------------------------------------------
 
@@ -133,7 +127,7 @@ for (pack in list.of.packages){
 
 #### FUNCTIONS ----------------------------------------------------------
 
-## Mean Shift with OTB 
+## runs MeanShift using OTB 
 meanShiftOTB <- function(ranger, spatialr, minsize, OTB.dir, OGR.dir, data.dir, temp.dir, img.file.name, seg.file.name, test.mode) {
   
   img.file <- file.path(data.dir, img.file.name)   ## image to segment
@@ -148,7 +142,7 @@ meanShiftOTB <- function(ranger, spatialr, minsize, OTB.dir, OGR.dir, data.dir, 
   }
   
   ## change no-data values to 0 to avoid the 1-segment-per-pixel situation outside the image (and get only a big polygon outside)
-  command.text <- sprintf("%s -in %s -out %s -mode changevalue -mode.changevalue.newv -0",  ## create text for command to run OTB (equivalent to saving this text in a batch file .bat and running it with system2() )
+  command.text <- sprintf("%s -in %s -out %s -mode changevalue -mode.changevalue.newv 0",  ## create text for command to run OTB (equivalent to saving this text in a batch file .bat and running it with system2() )
                           file.path(OTB.dir, "otbcli_ManageNoData"),   ## complete path to OTB bat file doing the value change
                           img.file,
                           clean.img.file
@@ -176,64 +170,129 @@ meanShiftOTB <- function(ranger, spatialr, minsize, OTB.dir, OGR.dir, data.dir, 
   
 } 
 
-## summarize numerical variables
+## summarizes numerical variables
 summarize.custom.num <- function(df, gvar1, gvar2, uniq.var, oper) {
-  df %>%
-    group_by_(gvar1, gvar2) %>%
-    summarise_(npixel = interp(~get(oper)(number), number=as.name(uniq.var)))
+  dt <- df %>%
+      group_by_(gvar1, gvar2) %>%
+      summarise_(npixel = interp(~get(oper)(number), number=as.name(uniq.var)))
+  return(as.data.table(dt))
+  
 }
 
-## summarize factor variables
+## summarizes factor variables
 summarize.custom.fac <- function(df, gvar1, gvar2, gvar3, uniq.var, oper) {
-  df %>%
-    group_by_(gvar1, gvar2, gvar3) %>%
-    summarise_(npixel = interp(~get(oper)(number), number=as.name(uniq.var))) %>%  
-    slice(which.max(npixel))
+  dt <- df %>%
+      group_by_(gvar1, gvar2, gvar3) %>%
+      summarise_(npixel = interp(~get(oper)(number), number=as.name(uniq.var))) %>%  
+      slice(which.max(npixel))
+  return(as.data.table(dt))
 }
 
+## summarize pixel values at the object level
+summarize.all <- function(pixels.dt, cols.ID, cols.coord) {
+  
+  pixels.dt[, npixel:= 1]   ## add column of ones to be used to count the nr of pixels per segment
+  
+  ## fill object level df with per segment mean and std dev
+  obj.dt <- data.table()  ## initialize df to store object-level features
+  firstIter <- T  ## set flag for 1st iteration as true 
+
+  ## loop over the columns to summarize only
+  for (col in colnames(pixels.dt)[!(colnames(pixels.dt) %in% c(cols.ID, cols.coord))]){
+    if ( is.factor(pixels.dt[[col]]) ){ ## if the column is a factor apply the summarizing function for factors with majority as summarizer
+      target <- summarize.custom.fac(pixels.dt, cols.ID[1], cols.ID[2], col, "npixel", "sum")
+      colnames(target)[4] <- paste(col, "_npixel", sep="")
+    } else if (col %in% c("npixel")){   ## else if it is the columns of ones apply the summarzing function for continuous variables with sum as summarizer
+      target <- summarize.custom.num(pixels.dt, cols.ID[1], cols.ID[2], col, "sum")
+    } else {  ## else if it is a continuous column apply the summarzing function for continuous variables with mean (final column ending with "_mean") and standard deviation ("_sd") as summarizers
+      target1 <- summarize.custom.num(pixels.dt, cols.ID[1], cols.ID[2], col, "mean")
+      colnames(target1)[3] <- paste(col, "_mean", sep="") 
+      target2 <- summarize.custom.num(pixels.dt, cols.ID[1], cols.ID[2], col, "sd")
+      colnames(target2)[3] <- paste(col, "_sd", sep="") 
+      target <- data.table(target1, target2[,ncol(target2), with=FALSE])
+    }
+    if (firstIter){  ## if first round of the loop obj.dt takes the values of the df target
+      obj.dt <- rbind(obj.dt, target)
+      firstIter <- F  ## set flag as false to go to 2nd part of if-else block from now on
+    } else {   ## then, just append the newly computed columns columnwise (cbind)
+      newcols <- !(colnames(target) %in% colnames(obj.dt) )
+      obj.dt <- cbind(obj.dt, target[, newcols, with=FALSE])
+    }
+  }
+  colnames(obj.dt)[ncol(obj.dt)] <- "nrpixseg"   ## last column is the number of pixels per segment
+  obj.dt[, CLASS_npixel:= CLASS_npixel / nrpixseg ] ## compute percentages of the majority class for both... 
+  colnames(obj.dt)[colnames(obj.dt) == "CLASS_npixel"] <- "CLASS_majpct"  ## ...the ground truth...
+  obj.dt[, EOSD_npixel := EOSD_npixel / nrpixseg]
+  colnames(obj.dt)[colnames(obj.dt) == "EOSD_npixel"] <- "EOSD_majpct"  ## ...and the EOSD layer
+  colnames(obj.dt)[colnames(obj.dt) == "EOSD"] <- "EOSD_maj"  ## ...and the EOSD layer
+  
+  ## replace with 0s NA values resulting from single pixel polygons (not possible to compute std dev)
+  for(j in seq_along(obj.dt)){
+    set(obj.dt, i=which(is.na(obj.dt[[j]])), j=j, value=0)
+  }
+  
+  setkeyv(obj.dt, cols.ID)  ## setkey that accepts vector with strings of column names
+  
+  pixels.dt[, npixel:= NULL]  ## remove npixel column bc otherwise it remains in the allpixels.dt 
+  
+  return(obj.dt)
+
+}
+
+## returns F-measure of the critical class and Kappa statistic
 fires.classif.metrics <- function(predicted, observed, critical.class) {
   RES <- confusionMatrix(predicted, observed)
   sens <- RES$byClass[critical.class, "Sensitivity"]
   spec <- RES$byClass[critical.class, "Specificity"]
-  return(data.frame(FmeasCrit=(2*sens*spec)/(sens+spec), Kappa=as.vector(RES$overall[2])))
+  return(data.frame(FmeasCritClass=(2*sens*spec)/(sens+spec), Kappa=as.vector(RES$overall[2])))
 }
 
 #### START --------------------------------------------------------------
 
 tic <- proc.time() ## start clocking global time
 
+data.dir <- file.path(base.dir, "Data", fsep = .Platform$file.sep)   ## data directory (nothing should be written here)
+results.dir <- file.path(base.dir, "Results", fsep = .Platform$file.sep)   ## results directory (outputs go here)
+figures.dir <- file.path(base.dir, "Figures", fsep = .Platform$file.sep)   ## figures directory (figures go here)
+temp.dir <- file.path(data.dir, "temp")  ## directory for temporary files like the segmentation shps (overwritten each time)
+if (!file.exists(temp.dir)) {dir.create(temp.dir, showWarnings=F, recursive=T)}  ## create it
+
 load(file.path(data.dir, "allpixels.Rdata"))
-allpixels <- dfp
+allpixels.dt <- dfp
 rm(dfp)
 
-allpixels <- allpixels %>% 
+allpixels.dt <- allpixels.dt %>% 
              filter(NAME %in% toupper(params$fires)) %>%   ## to keep only fires actually specified in params 
              select_(.dots = c("NAME", "CLASS", "X", "Y", params$base.predictors))  ## keep only predictors of interest
+
+allpixels.dt <- as.data.table(allpixels.dt)
 
 #### LOOCV OVER FIRES ---------------------------------------------------
 
 ## initialize empty factor vector with appropriate levels to store final class predictions at each round of the Leave-one-out cross-validation loop
-Y.predicted <- factor(rep(NA, nrow(allpixels)), levels=levels(allpixels$CLASS))  
+Y.predicted.pixel.raw <- Y.predicted.object.multi <- Y.predicted.object.single <- factor(rep(NA, nrow(allpixels.dt)), levels=levels(allpixels.dt[,CLASS]))
+
 for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
 
   fires.in <- params$fires[!params$fires %in% fire.out]   ## fires to keep in at this round of the loop 
-  idx.pix.in <- allpixels$NAME %in% toupper(fires.in)    ## logical indices of the pixels to keep in
-  idx.pix.out <- !allpixels$NAME %in% toupper(fires.in)   ## logical indices of the pixels to leave out
+  idx.pix.in <- allpixels.dt[,NAME] %in% toupper(fires.in)    ## logical indices of the pixels to keep in
+  idx.pix.out <- !allpixels.dt[,NAME] %in% toupper(fires.in)   ## logical indices of the pixels to leave out
   
-  allpixels.in <- allpixels[idx.pix.in,]   ## df with pixels in
-  allpixels.out <- allpixels[idx.pix.out,]  ## df with pixels out
+  allpixels.in.dt <- allpixels.dt[idx.pix.in,]   ## dt with pixels in
+  allpixels.out.dt <- allpixels.dt[idx.pix.out,]  ## dt with pixels out
 
 #### SEGMENTATION OF KEPT-IN FIRES --------------------------------------
-
-  multi.scale.pix.df <- data.frame(matrix(nrow=0, ncol=0))   ## stil to implement
-  OAs.OOB.meanshift <- data.frame(matrix(nrow=0, ncol=4))   ## initialize empty matrix to store Out-of-Bag Overall Accuracies and associated parameters for each segmentation
-  colnames(OAs.OOB.meanshift) <- c("ranger", "spatialr", "minsize", "OA")
+  
+  OAs.OOB.meanshift.dt <- data.table(matrix(nrow=0, ncol=4))   ## initialize empty matrix to store Out-of-Bag Overall Accuracies and associated parameters for each segmentation
+  colnames(OAs.OOB.meanshift.dt) <- c("ranger", "spatialr", "minsize", "OA")
+  
   ## df storing segment IDs for all the pixels kept in (as many columns as combinations of parameters)
-  seg.ids.df <- data.frame(matrix(nrow=nrow(allpixels.in), ncol=length(params$ranger.vect)*length(params$spatialr.vect)*length(params$minsize.vect)))  
+  seg.ids.df <- data.frame(matrix(nrow=nrow(allpixels.in.dt), ncol=length(params$ranger.vect)*length(params$spatialr.vect)*length(params$minsize.vect)))  
   ms.par.col <- 1  ## start at 1 the index over columns of dataframe of segment IDs
   
-  ## fill object level df with per segment mean and std dev
-  multi.scale.pix.in.dt <- data.table(allpixels.in[, c("NAME", "CLASS", params$base.predictors )])  ## initialize dt to store object-level features for all the kept-in pixels
+  ## fill object level dt with per segment mean and std dev
+  multi.scale.pix.in.dt <- allpixels.in.dt[, c("NAME", "CLASS", params$base.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
+  multisc.predictors <- params$base.predictors
   multisc.idx <- 1  ## index iterating over the sets of multiscale parameters
 
   ## 3 nested loops over the Meanshift parameters
@@ -256,62 +315,33 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
           fire.image.proj <- CRS(proj4string(segments))   ## get projection string from segments
           
           ## create spatial points object with coordinates of all the pixels in current fire.in to extract segments
-          coords <- SpatialPoints(allpixels.in[allpixels.in$NAME==toupper(fire.in), c("X", "Y")], proj4string=fire.image.proj)  
+          coords <- SpatialPoints(allpixels.in.dt[NAME==toupper(fire.in), .(X, Y)], proj4string=fire.image.proj)  
           id.segment <- over(coords, segments)$dn  ## get segment IDs contained in dn column of the output of function over()
           
-          seg.ids.df[allpixels.in$NAME==toupper(fire.in), ms.par.col] <- id.segment  ## dynamically fill the part of the column number ms.par.col of the df of segment IDs corresponding to fire.in
+          seg.ids.df[allpixels.in.dt[,NAME]==toupper(fire.in), ms.par.col] <- id.segment  ## dynamically fill the part of the column number ms.par.col of the df of segment IDs corresponding to fire.in
           
         }
         
         colnames(seg.ids.df)[ms.par.col] <- sprintf("rr%ssr%sms%s", ranger, spatialr, minsize)  ## name that same column with a string containing Meanshift parameter values
         
-        allpixels.in$segID <- seg.ids.df[, ms.par.col]  ## temporarily add segment IDs to allpixel.in df
-        allpixels.in$npixel <- 1   ## add column of ones to be used to count the nr of pixels per segment
+        allpixels.in.dt[, segID:= seg.ids.df[, ms.par.col]]  ## temporarily add segment IDs to allpixel.in df
         
-        ## fill object level df with per segment mean and std dev
-        single.scale.obj.df <- data.frame()  ## initialize df to store object-level features
-        count <- 0  ## initialize iterator
+        single.scale.obj.dt <- summarize.all(allpixels.in.dt, c("NAME", "segID"), c("X", "Y"))
         
-        ## loop over the columns to summarize only
-        for (col in colnames(allpixels.in)[!(colnames(allpixels.in) %in% c("NAME", "segID", "X", "Y"))]){
-          if (col %in% c("CLASS", "EOSD")){ ## if the column is a factor apply the summarizing function for factors with majority as summarizer
-            target <- summarize.custom.fac(allpixels.in, "NAME", "segID", col, "npixel", "sum")
-            colnames(target)[4] <- paste(col, "_npixel", sep="")
-          } else if (col %in% c("npixel")){   ## else if it is the columns of ones apply the summarzing function for continuous variables with sum as summarizer
-            target <- summarize.custom.num(allpixels.in, "NAME", "segID", col, "sum")
-          } else {  ## else if it is a continuous column apply the summarzing function for continuous variables with mean (final column ending with "_mean") and standard deviation ("_sd") as summarizers
-            target1 <- summarize.custom.num(allpixels.in, "NAME", "segID", col, "mean")
-            colnames(target1)[3] <- paste(col, "_mean", sep="") 
-            target2 <- summarize.custom.num(allpixels.in, "NAME", "segID", col, "sd")
-            colnames(target2)[3] <- paste(col, "_sd", sep="") 
-            target <- data.frame(target1[,1:3], target2[,3])
-          }
-          if (count == 0){  ## if first round of the loop single.scale.obj.df takes the values of the df target
-            single.scale.obj.df <- rbind(single.scale.obj.df, as.data.frame(target))
-          } else {   ## then, just append the newly computed columns columnwise (cbind)
-            newcols <- !(colnames(as.data.frame(target)) %in% colnames(single.scale.obj.df) )
-            single.scale.obj.df <- cbind(single.scale.obj.df, target[,newcols])
-          }
-          count <- count + 1
-        }
-        colnames(single.scale.obj.df)[ncol(single.scale.obj.df)] <- "nrpixseg"   ## last column is the number of pixels per segment
-        single.scale.obj.df$CLASS_npixel <- single.scale.obj.df$CLASS_npixel / single.scale.obj.df$nrpixseg  ## compute percentages of the majority class for both... 
-        colnames(single.scale.obj.df)[colnames(single.scale.obj.df) == "CLASS_npixel"] <- "CLASS_majpct"  ## ...the ground truth...
-        single.scale.obj.df$EOSD_npixel <- single.scale.obj.df$EOSD_npixel / single.scale.obj.df$nrpixseg
-        colnames(single.scale.obj.df)[colnames(single.scale.obj.df) == "EOSD_npixel"] <- "EOSD_majpct"  ## ...and the EOSD layer
-        colnames(single.scale.obj.df)[colnames(single.scale.obj.df) == "EOSD"] <- "EOSD_maj"  ## ...and the EOSD layer
-        
-        ## if segmentation scale is among the set specified by params$multisc.params, store for every pixel the summarized predictor values at the object level
-        if (ranger %in% params$multisc.params$ranger[multisc.idx] & 
-            spatialr %in% params$multisc.params$spatialr[multisc.idx] & 
-            minsize %in% params$multisc.params$minsize[multisc.idx]) {
-          single.scale.obj.dt <- data.table(single.scale.obj.df, key=c("NAME", "segID"))
-          multi.scale.pix.in.dt[, segID:=allpixels.in$segID]
+        ## if segmentation scale is among the set specified by params$multisc, store for every pixel the summarized predictor values at the object level
+        if (ranger %in% params$multisc$ranger[multisc.idx] & 
+            spatialr %in% params$multisc$spatialr[multisc.idx] & 
+            minsize %in% params$multisc$minsize[multisc.idx]) {
+          
+          multi.scale.pix.in.dt[, segID:=allpixels.in.dt[,segID]]
           setkey(multi.scale.pix.in.dt, NAME, segID)
           cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
           multi.scale.pix.in.dt <- multi.scale.pix.in.dt[single.scale.obj.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
-          setnames(multi.scale.pix.in.dt, old=params$obj.predictors, new=sprintf("Sc%s_%s", multisc.idx, params$obj.predictors))
+          multisc.names <- sprintf("Sc%s_%s", multisc.idx, params$obj.predictors)
+          setnames(multi.scale.pix.in.dt, old=params$obj.predictors, new=multisc.names)
+          multisc.predictors <- c(multisc.predictors, multisc.names)  ## save multiscale predictors names in a growing list
           multisc.idx <- multisc.idx + 1  
+          
         }
         
         ## set mtry parameter according to params$mtry
@@ -323,8 +353,9 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
         }
         set.seed(params$seed)   
         ## apply RF on df with object-level values using as predictors the columns listed in params$obj.predictors and with response variable the column specified in params$targ
-        # RF <- randomForest(x=single.scale.obj.df[,params$obj.predictors], y=single.scale.obj.df[,params$targ], ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
-        # OAs.OOB.meanshift <- rbind( OAs.OOB.meanshift, data.frame(ranger, spatialr, minsize, OA=1-RF$err.rate[params$ntree, "OOB"]) )   ## grow df with results
+        RF <- randomForest(x=single.scale.obj.dt[,params$obj.predictors, with=FALSE], y=single.scale.obj.dt[[params$targ]], 
+                           ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
+        OAs.OOB.meanshift.dt <- rbind( OAs.OOB.meanshift.dt, data.table(ranger, spatialr, minsize, OA=1-RF$err.rate[params$ntree, "OOB"]) )   ## grow dt with results
       
         ms.par.col <- ms.par.col+1  ## increment index over columns of dataframe of IDs
         
@@ -332,19 +363,22 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
     }  ## end for on spatialr
   }  ## end for on minsize
   
-  OAs.OOB.meanshift.sorted <- arrange(OAs.OOB.meanshift, desc(OA))   ## sort df with results by decreasing OA
+  OAs.OOB.meanshift.sorted.dt <- arrange(OAs.OOB.meanshift.dt, desc(OA))   ## sort df with results by decreasing OA
   
 #### SEGMENTATION OF LEFT-OUT FIRE ---------------------------------------------
   
   ## segment the left-out fire with the multiscale parameters and, if not already included, with the best parameters
-  ranger.vect.LO <- unique(c(params$ranger.vect.multisc, OAs.OOB.meanshift.sorted$ranger[1]))
-  spatialr.vect.LO <- unique(c(params$spatialr.vect.multisc, OAs.OOB.meanshift.sorted$spatialr[1]))
-  minsize.vect.LO <- unique(c(params$minsize.vect.multisc, OAs.OOB.meanshift.sorted$minsize[1]))
+  ranger.vect.LO <- unique(c(params$multisc$ranger, OAs.OOB.meanshift.sorted.dt$ranger[1]))
+  spatialr.vect.LO <- unique(c(params$multisc$spatialr, OAs.OOB.meanshift.sorted.dt$spatialr[1]))
+  minsize.vect.LO <- unique(c(params$multisc$minsize, OAs.OOB.meanshift.sorted.dt$minsize[1]))
   
+  multi.scale.pix.out.dt <- allpixels.out.dt[, c("NAME", "CLASS", params$base.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
+  multisc.idx <- 1  ## index iterating over the sets of multiscale parameters
   for (ranger in ranger.vect.LO) {
     for (spatialr in spatialr.vect.LO) {
       for (minsize in minsize.vect.LO) {
-        ## segment left out fire with best parameters
+        
+        ## segment left out fire
         img.file.name <- sprintf("%s_%sbands.tif", fire.out, params$nr.bands.seg)
         if (params$meanshift.testmode) {
           seg.file.name <- sprintf("Segment_%s_ranger%d_spatial%d_minsize%d", fire.out, ranger, spatialr, minsize)
@@ -353,114 +387,171 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
         }
         segments <- meanShiftOTB(ranger, spatialr, minsize, OTB.dir, OGR.dir, file.path(data.dir, sprintf("%s_bands", params$nr.bands.seg)), temp.dir, img.file.name, seg.file.name, params$meanshift.testmode)
         fire.image.proj <- CRS(proj4string(segments)) 
-        coords <- SpatialPoints(allpixels.out[, c("X", "Y")], proj4string=fire.image.proj)  ## create spatial points for extrating segments from OTB
+        coords <- SpatialPoints(allpixels.out.dt[, .(X, Y)], proj4string=fire.image.proj)  ## create spatial points for extrating segments from OTB
         id.segment.out <- over(coords, segments)$dn
-        allpixels.out$segID <- id.segment.out  ## add segment IDs to the df with the left-out pixels
-        allpixels.out$npixel <- 1   ## add column of ones to count nr of pixels per segment
+
+        allpixels.out.dt[, segID:= id.segment.out] # add segment IDs to the df with the left-out pixels
+        
+#### CLASSIFICATION OF LEFT-OUT FIRE ----------------------------------------
+        
+        ## if best parameters
+        if (ranger==OAs.OOB.meanshift.sorted.dt$ranger[1] &
+            spatialr==OAs.OOB.meanshift.sorted.dt$spatialr[1] &
+            minsize==OAs.OOB.meanshift.sorted.dt$minsize[1]) {
+        
+          ## retrieve segment IDs for kept-in fires associated with the best combination of parameters
+          best.colname <- sprintf("rr%ssr%sms%s", OAs.OOB.meanshift.sorted.dt$ranger[1], OAs.OOB.meanshift.sorted.dt$spatialr[1], OAs.OOB.meanshift.sorted.dt$minsize[1])
+          id.segment.in <- seg.ids.df[, best.colname]   
+          allpixels.in.dt[, segID:= id.segment.in]  ## add IDs to the kept-in pixels dt
+          
+          allpixels.final.dt <- rbind(allpixels.in.dt, allpixels.out.dt)  ## stack together the in and out pixels (unique segments are identified by fire NAME and segID) 
+          
+          single.scale.obj.dt <- summarize.all(allpixels.final.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.dt bc it is not needed
+          
+          nr.vars <- length(params$obj.predictors)
+          if (params$mtry == 'sqrt_nr_var') {
+            mtries <- floor(sqrt(nr.vars))
+          } else if (params$mtry == 'nr_var_div_3') {
+            mtries <- floor(nr.vars/3)
+          }
+          segments.in <- single.scale.obj.dt$NAME %in% toupper(fires.in)   ## retrieve indices of kept-in segments in the object-level df
+          segments.out <- single.scale.obj.dt$NAME == toupper(fire.out)    ## retrieve indices of left-out segments in the object-level df
+          
+          ## train RF on in segments and predict on out segments, always with params$obj.predictors
+          set.seed(params$seed)
+          RF <- randomForest(x=single.scale.obj.dt[segments.in, params$obj.predictors, with=FALSE], y=single.scale.obj.dt[[params$targ]][segments.in],   ## y has to be a vector and the syntax for data.table is first getting the vector with [[]] then subsetting it from outside by adding [segments.in] 
+                             ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
+          
+          Y.predicted.segments.out <- predict(RF, single.scale.obj.dt[segments.out, params$obj.predictors, with=FALSE], type="response", predict.all=F, nodes=F)
+          
+          ## Save shp with predicted class
+          ## build a dt with the predicted class for each segment (Y.predicted.segments.out) and the associated segment ID (single.scale.obj.df[segments.out, "segID"])
+          y.pred.segID.dt <- data.table(segID=single.scale.obj.dt[segments.out, segID], ypred=Y.predicted.segments.out)
+          
+          ## assign the predicted class to the "data" df of the segments shp by merging by segment ID ("dn" or "segID"), all.x=T is used to keep the segments for which there is no prediction (outside of fire)
+          segments@data <- merge(segments@data, y.pred.segID.dt, by.x="dn", by.y="segID", all.x=T)  
+          segments@data$ypred[is.na(segments@data$ypred)] <- params$mort.class.labels[1]    ## if NA are assigned to polygons outside of fire, assign the lowest mortality class instead
+          writeOGR(segments, results.dir, sprintf("%s_pred_map_%s", fire.out, best.colname), driver="ESRI Shapefile", overwrite_layer=TRUE)   ## write prediction map shapefile for the left-out fire
+          
+          ## Join the predicted labels for the segments to the corresponding segID in the complete vector of all images
+          setkey(y.pred.segID.dt, segID) ## set key as the segment IDs column
+          segID.allpixels.out.dt <- data.table(segID=allpixels.out.dt[,segID], key = "segID") #
+          Y.predicted.object.single[idx.pix.out] <- segID.allpixels.out.dt[y.pred.segID.dt, ypred]  ## join to data.table based on a common key with this command allpixels.out.segID.dt[y.pred.segID.dt], then select only ypred as a column
+          
+        } ## end if best parameters
+        
+        ## if segmentation scale is among the set specified by params$multisc, store for every pixel the summarized predictor values at the object level
+        if (ranger %in% params$multisc$ranger[multisc.idx] & 
+            spatialr %in% params$multisc$spatialr[multisc.idx] & 
+            minsize %in% params$multisc$minsize[multisc.idx]) {
+          
+          single.scale.obj.dt <- summarize.all(allpixels.out.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.dt bc it is not needed
+          
+          multi.scale.pix.out.dt[, segID:=allpixels.out.dt[,segID]]
+          setkey(multi.scale.pix.out.dt, NAME, segID)
+          cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
+          multi.scale.pix.out.dt <- multi.scale.pix.out.dt[single.scale.obj.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
+          setnames(multi.scale.pix.out.dt, old=params$obj.predictors, new=sprintf("Sc%s_%s", multisc.idx, params$obj.predictors))
+          multisc.idx <- multisc.idx + 1  
+          
+        } ## end if multisc parameters
         
       }
     }
-  }
+  } ## end for on MeanShift parameters
   
-  ## retrieve segment IDs for kept-in fires associated with the best combination of parameters
-  best.colname <- sprintf("rr%ssr%sms%s", OAs.OOB.meanshift.sorted$ranger[1], OAs.OOB.meanshift.sorted$spatialr[1], OAs.OOB.meanshift.sorted$minsize[1])
-  id.segment.in <- seg.ids.df[, best.colname]   
-  allpixels.in$segID <- id.segment.in  ## add IDs to the kept-in pixels df
+  multi.scale.pix.dt <- rbind(multi.scale.pix.in.dt, multi.scale.pix.out.dt)  ## stack together the in and out pixels (unique segments are identified by fire NAME and segID) 
   
-  allpixels.final <- rbind(allpixels.in, allpixels.out)  ## stack together the in and out pixels (unique segments are identified by fire NAME and segID) 
-  
-  ## fill object-level df with per segment mean and std dev (same as above) for both in and out fires 
-  count <- 0
-  single.scale.obj.df <- data.frame()
-  for (col in colnames(allpixels.final)[!(colnames(allpixels.final) %in% c("NAME", "segID", "X", "Y"))]){
-    if (col %in% c("CLASS", "EOSD")){
-      target <- summarize.custom.fac(allpixels.final, "NAME", "segID", col, "npixel", "sum")
-      colnames(target)[4] <- paste(col, "_npixel", sep="")
-    } else if (col %in% c("npixel")){
-      target <- summarize.custom.num(allpixels.final, "NAME", "segID", col, "sum")
-    } else {
-      target1 <- summarize.custom.num(allpixels.final, "NAME", "segID", col, "mean")
-      colnames(target1)[3] <- paste(col, "_mean", sep="") 
-      target2 <- summarize.custom.num(allpixels.final, "NAME", "segID", col, "sd")
-      colnames(target2)[3] <- paste(col, "_sd", sep="") 
-      target <- data.frame(target1[,1:3], target2[,3])
+  for (appr in c("PixelBased", "ObjectMultiScale")) {
+    
+    ## depending on the type of approach set on which predictors the RF will run
+    if (appr == "PixelBased") {
+      predictors <- params$base.predictors    ## base pixel-based predictors
+    } else if (appr == "ObjectMultiScale") {
+      predictors <- multisc.predictors    ## multiscale predictors (base predictors + different scales set in params$multisc)
     }
-    if (count == 0){
-      single.scale.obj.df <- rbind(single.scale.obj.df, as.data.frame(target))
-    } else {
-      newcols <- !(colnames(as.data.frame(target)) %in% colnames(single.scale.obj.df) )
-      single.scale.obj.df <- cbind(single.scale.obj.df, target[,newcols])
-    }
-    count <- count + 1
-  }
-  colnames(single.scale.obj.df)[ncol(single.scale.obj.df)] <- "nrpixseg"
-  single.scale.obj.df$CLASS_npixel <- single.scale.obj.df$CLASS_npixel / single.scale.obj.df$nrpixseg
-  colnames(single.scale.obj.df)[colnames(single.scale.obj.df) == "CLASS_npixel"] <- "CLASS_majpct"
-  single.scale.obj.df$EOSD_npixel <- single.scale.obj.df$EOSD_npixel / single.scale.obj.df$nrpixseg
-  colnames(single.scale.obj.df)[colnames(single.scale.obj.df) == "EOSD_npixel"] <- "EOSD_majpct"
-  
-  
 
-#### CLASSIFICATION OF LEFT-OUT FIRE ----------------------------------------
-  
-  nr.vars <- length(params$obj.predictors)
-  if (params$mtry == 'sqrt_nr_var') {
-    mtries <- floor(sqrt(nr.vars))
-  } else if (params$mtry == 'nr_var_div_3') {
-    mtries <- floor(nr.vars/3)
-  }
-  segments.in <- single.scale.obj.df$NAME %in% toupper(fires.in)   ## retrieve indices of kept-in segments in the object-level df
-  segments.out <- single.scale.obj.df$NAME == toupper(fire.out)    ## retrieve indices of left-out segments in the object-level df
-  
-  ## train RF on in segments and predict on out segments, always with params$obj.predictors
-  set.seed(params$seed)
-  RF <- randomForest(x=single.scale.obj.df[segments.in, params$obj.predictors], y=single.scale.obj.df[segments.in, params$targ], ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
-  Y.predicted.segments.out <- predict(RF, single.scale.obj.df[segments.out, params$obj.predictors], type="response", predict.all=F, nodes=F)
-  
-  ## build a df with the predicted class for each segment (Y.predicted.segments.out) and the associated segment ID (single.scale.obj.df[segments.out, "segID"])
-  y.pred.segID.df <- data.frame(segID=single.scale.obj.df[segments.out, "segID"], ypred=Y.predicted.segments.out)
-  
-  ## assign the predicted class to the "data" df of the segments shp by merging by segment ID ("dn" or "segID"), all.x=T is used to keep the segments for which there is no prediction (outside of fire)
-  segments@data <- merge(segments@data, y.pred.segID.df, by.x="dn", by.y="segID", all.x=T)  
-  segments@data$ypred[is.na(segments@data$ypred)] <- params$mort.classes[1]    ## if NA are assigned to polygons outside of fire, assign the lowest mortality class instead
-  writeOGR(segments, results.dir, sprintf("%s_pred_map_%s", fire.out, best.colname), driver="ESRI Shapefile", overwrite_layer=TRUE)   ## write prediction map shapefile for the left-out fire
-  
-  y.pred.segID.dt <- data.table(y.pred.segID.df, key = "segID") ## create data.table with key being the segment IDs column
-  allpixels.out.segID.dt <- data.table(segID=allpixels.out$segID, key = "segID") #
-  
-  Y.predicted[idx.pix.out] <- allpixels.out.segID.dt[y.pred.segID.dt, ypred]  ## join to data.table based on a common key with this command allpixels.out.segID.dt[y.pred.segID.dt], then select only ypred as a column
-  
+    nr.vars <- length(predictors)
+    if (params$mtry == 'sqrt_nr_var') {
+      mtries <- floor(sqrt(nr.vars))
+    } else if (params$mtry == 'nr_var_div_3') {
+      mtries <- floor(nr.vars/3)
+    }
+    
+    ## train RF on in pixels and predict on out pixels, always with a given set of "predictors"
+    if (params$parallel.RF) {  ## in parallel with foreach()
+      set.seed(params$seed)   ## set the same seed every time so that we obtain the same results
+      nr.clusters <- min(params$ntree, detectCores())  ## set as minimum between the nr of trees and the nr of cores
+      tot.nrtrees <- params$ntree      ## total nr of trees to be shared across cores (clusters)
+      nrtrees.clust <- tot.nrtrees%/%(nr.clusters-1)   ## nr of trees per cluster (computed over the total nr of cluster minus 1)
+      remaind <- tot.nrtrees%%(nr.clusters-1)   ## remainder of trees for last cluster
+      cl <- makeCluster(nr.clusters)    ## initialize cores
+      registerDoParallel(cl)   ## regirster them
+      ## actual loop that will aggregate the results (output of all trees in the RF object rf.RF, the output of foreach()), use .multicombine=T for increased speed
+      RF <- foreach (ntrees=c(rep(nrtrees.clust, nr.clusters-1), remaind), .combine=combine, .multicombine=T, .packages=c('randomForest', 'data.table')) %dopar% {
+        randomForest(x=multi.scale.pix.dt[idx.pix.in, predictors, with=FALSE], y=multi.scale.pix.dt[[params$targ]][idx.pix.in], 
+                     ntree=ntrees, mtry=mtries, nodesize=params$nodesize)
+      }
+      stopCluster(cl)
+    } else {   ## or classical (sequential)
+      set.seed(params$seed)
+      RF <- randomForest(x=multi.scale.pix.dt[idx.pix.in, predictors, with=FALSE], y=multi.scale.pix.dt[[params$targ]][idx.pix.in],   ## y has to be a vector and the syntax for data.table is first getting the vector with [[]] then subsetting it from outside by adding [segments.in] 
+                         ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
+    }
+    
+    ## predict on dt with all the pixel based variables (at each iteration with different predictors)
+    Y.predicted <- predict(RF, multi.scale.pix.dt[idx.pix.out, predictors, with=FALSE], type="response", predict.all=F, nodes=F)
+    
+    if (appr == "PixelBased") {
+      Y.predicted.pixel.raw[idx.pix.out] <- Y.predicted  
+    } else if (appr == "ObjectMultiScale") {
+      Y.predicted.object.multi[idx.pix.out] <- Y.predicted  
+    }
+
+  }  ## end for on params$approach
+
 } ## end for on fire.out
 
 #### ASSESSMENT -----------------------------------------------------------
 
-## overall assessment
-RES.LOOCV <- fires.classif.metrics(Y.predicted, allpixels$CLASS, params$critical.class)
+RES <- list()
+for (appr in params$approach) {
+  
+  if (appr == "PixelBased") {
+    Y.predicted <- Y.predicted.pixel.raw  
+  } else if (appr == "ObjectSingleScale") {
+    Y.predicted <- Y.predicted.object.single  
+  } else if (appr == "ObjectMultiScale") {
+    Y.predicted <- Y.predicted.object.multi  
+  }
 
-## by fire assessment
-temp.df <- data.frame(predicted=Y.predicted, observed=allpixels$CLASS, NAME=allpixels$NAME)
-metrics.by.fire <- temp.df %>%
-                 group_by(NAME) %>% 
-                 do(fires.classif.metrics(.$predicted, .$observed, params$critical.class))  ## summarize with custom function returning 2 outputs
-
-metrics.by.fire <- as.data.frame(metrics.by.fire[match(as.character(toupper(params$fires)), as.character(metrics.by.fire$NAME)), ]) ## resort fires to respect initial order
-
-conf.mat.by.fire <- list()
-for (fire in params$fires) {
-  conf.mat.by.fire <- list.append(conf.mat.by.fire, confusionMatrix(temp.df$predicted[temp.df$NAME==toupper(fire)], temp.df$observed[temp.df$NAME==toupper(fire)]))
-}
-
-RES.FINAL <- rbind(cbind(data.frame(NAME="OVERALL"), RES.LOOCV), metrics.by.fire)   ## stack overall and by fire metrics together
+  ## overall assessment
+  metrics.overall <- fires.classif.metrics(Y.predicted, allpixels.dt$CLASS, params$critical.class.label)
+  
+  ## by fire assessment
+  temp.df <- data.frame(predicted=Y.predicted, observed=allpixels.dt$CLASS, NAME=allpixels.dt$NAME)
+  metrics.by.fire <- temp.df %>%
+                   group_by(NAME) %>% 
+                   do(fires.classif.metrics(.$predicted, .$observed, params$critical.class.label))  ## summarize with custom function returning 2 outputs
+  
+  metrics.by.fire <- as.data.frame(metrics.by.fire[match(as.character(toupper(params$fires)), as.character(metrics.by.fire$NAME)), ]) ## resort fires to respect initial order
+  
+  metrics <- rbind(cbind(data.frame(NAME="OVERALL"), metrics.overall), metrics.by.fire)   ## stack overall and by fire metrics together
+  
+  ## save confusion matrices (and whole output by caret's confusionMatrix()) under the name of each fire
+  conf.mat.by.fire <- list()
+  for (fire in params$fires) {
+    cmd <- sprintf('conf.mat.by.fire <- list.append(conf.mat.by.fire, %s=confusionMatrix(temp.df$predicted[temp.df$NAME==toupper(fire)], temp.df$observed[temp.df$NAME==toupper(fire)]))', fire)
+    eval(parse(text=cmd))
+  }
+  
+  cmd <- sprintf('RES$%s$metrics <- metrics; RES$%s$conf.mat.by.fire <- conf.mat.by.fire', appr, appr)
+  eval(parse(text=cmd))
+  
+}  ## end for on params$approach
 
 RES.file = file.path(results.dir, 'RESULTS.Rdata', fsep = .Platform$file.sep) 
-save(RES.FINAL, file = RES.file)
-
-# ## implement mixed measure to get final ranking?
-# if (params$metric == "Kappa") {
-#   metric <- as.vector(RES.LOOCV$Kappa)  ## to remove the column name
-# } else if (params$metric == "MixKappaFm") {
-#   metric <- as.vector(0.5*RES.LOOCV$Kappa + 0.5*RES.LOOCV$Fmeas)
-# }
+save(RES, file = RES.file)
 
 #### PRINT LOGS ---------------------------------------------------------
 
