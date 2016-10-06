@@ -252,6 +252,7 @@ summarize.all <- function(pixels.dt, cols.ID, cols.coord) {
 
 ## returns classification accuracy metrics
 classif.metrics <- function(arg1, arg2) {
+  
   if (nargs() == 2) {   ## if the number of arguments is 2, take them as the predicted and observed vectors
     predicted <- arg1
     observed <- arg2
@@ -259,11 +260,26 @@ classif.metrics <- function(arg1, arg2) {
     predicted <- arg1$predicted
     observed <- arg1$observed 
   }
-  RES <- confusionMatrix(predicted, observed)
-  sens <- RES$byClass[, "Sensitivity"]
-  spec <- RES$byClass[, "Specificity"]
-  return(list( Kappa=as.vector(RES$overall[2]), OA=as.vector(RES$overall[1]), Fmeas=(2*sens*spec)/(sens+spec), ConfMat=RES$table))
+  
+  if ( length(levels(observed)) > 2 & length(unique(observed)) > 2) {  ## handle the multi-class case
+    RES <- confusionMatrix(predicted, observed)
+    PA <- RES$byClass[, "Sensitivity"]  ## Producer's accuracy, 1 - omission error, TP/(observed total)
+    UA <- RES$byClass[, "Pos Pred Value"]  ## User's accuracy, 1 - commission error, TP/(predicted total)
+  } else if ( length(levels(observed)) == 2 | length(unique(observed)) == 2 ) {  ## handle the binary class case
+    RES <- confusionMatrix(predicted, observed, positive=levels(observed)[1])  ## first run assessment setting first class as positive
+    PA <- RES$byClass[["Sensitivity"]]  ## save producers accuracy...
+    UA <- RES$byClass[["Pos Pred Value"]]  ## ...and users accuracy
+    RES <- confusionMatrix(predicted, observed, positive=levels(observed)[2])  ## then repeat with second class
+    PA <- c(PA, RES$byClass[["Sensitivity"]])  ## and complete PA vector
+    UA <- c(UA, RES$byClass[["Pos Pred Value"]])  ## and UA vector
+  } else {
+    stop("Observed values: less than 2 levels or levels to be updated")
+  }
+  
+  return(list( Kappa=as.vector(RES$overall[2]), OA=as.vector(RES$overall[1]), Fmeas=(2*PA*UA)/(PA+UA), ConfMat=RES$table))
+  
 }
+
 
 #### START --------------------------------------------------------------
 
