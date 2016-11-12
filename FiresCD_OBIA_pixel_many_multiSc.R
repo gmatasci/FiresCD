@@ -42,25 +42,45 @@ params <- list()
 
 ## General
                                                       
-params$approach <- c("Pixel", "PixelMultiSc") ## Pixel --> classic pixel-based approach 
-                                                ## PixelMultiSc --> features computes for different segmentations are stacked in the same df with a pixel-based approach
-
 # params$fires <- c("Abraham", "Cone", "Flett", "Keane", "Leggo", "Levellers", "Liege",
 #                   "Mcarther", "Overflow", "Perry", "Rail", "Rainbow", "Steephill", "Tanghe")  ## 14 fires to consider
-params$fires <- c("Abraham", "Tanghe")
+# params$fires <- c("Abraham", "Tanghe", "Keane")
+
+params$fires <- c("Leggo", "Abraham", "Tanghe")
 
 params$mort.class.names <- as.factor(c("0-5%", "6-25%", "95-100%"))
 params$mort.class.labels <- as.factor(c(1, 2, 3))
 params$critical.class.label <- 2  ## NOT USED: corresponding to class "6-25%", used to compute F-measure on this class (as an alternative, more detailed measure to Kappa)
 
 ## Meanshift
-params$meanshift.run <- T    ## if set to T it runs the MS segmentation and saves segIDs, otherwise it loads them from previous run
+params$meanshift.run <- F    ## if set to T it runs the MS segmentation and saves segIDs, otherwise it loads them from previous run
 params$meanshift.save.shp <- T    ## if set to T saves in segments.shp.dir each segmentation result (shp) with parameter values to visually inspect the segments
 params$write.maps <- T   ## wheter or not to write raster containing the pixel level prediction for each approach
 params$nr.bands.seg <- 3   ## number of bands to use for segmentation (points to a different folder)
-params$minsize.vect <- c(5) ## Minimum object size: on SF best with 100, for fireswith 5, setting it to 0 just produces 1-pixel segments
-params$multisc$ms1 <- data.frame(ranger=c(200), spatialr=c(10), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
-params$multisc$ms2 <- data.frame(ranger=c(100, 200), spatialr=c(10, 10), minsize=c(5, 5))  ## parameters for multiscale: each row is a combination of the 3
+params$multisc$ms1 <- data.frame(ranger=c(50), spatialr=c(10), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+params$multisc$ms2 <- data.frame(ranger=c(100), spatialr=c(10), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+params$multisc$ms3 <- data.frame(ranger=c(200), spatialr=c(10), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms4 <- data.frame(ranger=c(300), spatialr=c(10), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+
+# params$multisc$ms5 <- data.frame(ranger=c(50), spatialr=c(5), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms6 <- data.frame(ranger=c(100), spatialr=c(5), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms7 <- data.frame(ranger=c(200), spatialr=c(5), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms8 <- data.frame(ranger=c(300), spatialr=c(5), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# 
+# params$multisc$ms9 <- data.frame(ranger=c(50), spatialr=c(20), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms10 <- data.frame(ranger=c(100), spatialr=c(20), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms11 <- data.frame(ranger=c(200), spatialr=c(20), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+# params$multisc$ms12 <- data.frame(ranger=c(300), spatialr=c(20), minsize=c(5))  ## parameters for multiscale: each row is a combination of the 3
+
+# params$multisc$ms2 <- data.frame(ranger=c(100, 200), spatialr=c(10, 10), minsize=c(5, 5)) 
+# params$multisc$ms3 <- data.frame(ranger=c(100, 150, 200), spatialr=c(10, 10, 10), minsize=c(5, 5, 5)) 
+# params$multisc$ms4 <- data.frame(ranger=c(50, 100, 150, 200), spatialr=c(10, 10, 10, 10), minsize=c(5, 5, 5, 5)) 
+
+## Fill vector with approach names
+params$approaches <- c("Pixel")
+for (i in 1:length(params$multisc)) {
+  params$approaches[1+i] <- sprintf("PixelMultiSc%d", i) 
+}
 
 ## RF
 params$pixel.predictors <- c("db1", "db2", "db3", "db4", "db5", "db7", 
@@ -74,13 +94,12 @@ params$obj.predictors <- c("db1_mean", "db1_sd", "db2_mean", "db2_sd", "db3_mean
                               "nrpixseg")    ## list of final predictors computed at the object level
 params$targ <- "CLASS"     ## target variable of the classification (column name of dataframe)
 params$seed <- 2016        ## seed to have same RF result
-params$use.strata <- T    ## wheter to use strata or not in training the RF
-params$parallel.RF <- F
-params$OOB.samples <- "object"   ## wheter to run the MS parameter optimization on the OOB samples at the "object" or "pixel" level
+params$use.strata <- T    ## wheter to use strata or not in training the RF, if set to True, RF training will not be run in parallel
 params$ntree <- 100    ## RF nr of trees
 params$mtry <- 'sqrt_nr_var'  ## how to set RF mtry: 'sqrt_nr_var' or 'nr_var_div_3'
 params$nodesize <- 1   ## RF nodesize: default for classification is 1
 params$plot.importance <- T  ## whether to plot RF variable importance
+
 
 ## Directories
 OTB.dir <- "C:/Users/gmatasci/Downloads/OTB-5.4.0-win64/bin"   ## directory in which OTB is located (input to function meanShiftOTB() )
@@ -296,7 +315,6 @@ allpixels.dt <- as.data.table(allpixels.dt)
 
 RESULTS <- list()   ## object containing the results
 
-RESULTS$best.scale.names <- c()
 RESULTS$ranked.scales <- list()
 
 #### OTB SEGMENTATION -------------------------------------------------------
@@ -310,9 +328,8 @@ MS.params.combs <- MS.params.combs.redund[!duplicated(MS.params.combs.redund), ]
 if (params$meanshift.run) {
 
   ## df storing segment IDs for all the pixels kept in (as many columns as combinations of parameters)
-  seg.ids.df <- data.frame( matrix(nrow=nrow(allpixels.dt), ncol=length(params$ranger.vect)*length(params$spatialr.vect)*length(params$minsize.vect)))  
-  ms.par.col <- 1  ## start at 1 the index over columns of dataframe of segment IDs
-  
+  seg.ids.df <- data.frame( matrix(nrow=nrow(allpixels.dt), ncol=nrow(MS.params.combs)))  
+
   ## loop over the Meanshift parameters
   for (idx.params.comb in 1:nrow(MS.params.combs)) {
     
@@ -338,13 +355,12 @@ if (params$meanshift.run) {
       coords <- SpatialPoints(allpixels.dt[NAME==toupper(fire), .(X, Y)], proj4string=fire.image.proj)  
       id.segment <- over(coords, segments)$dn  ## get segment IDs contained in dn column of the output of function over()
       
-      seg.ids.df[allpixels.dt[, NAME]==toupper(fire), ms.par.col] <- id.segment ## dynamically fill the part of the column number ms.par.col of the df of segment IDs corresponding to fire.in
+      seg.ids.df[allpixels.dt[, NAME]==toupper(fire), idx.params.comb] <- id.segment ## dynamically fill the part of the column number idx.params.comb of the df of segment IDs corresponding to fire.in
+    
     }
     
-    colnames(seg.ids.df)[ms.par.col] <- sprintf("rr%ssr%sms%s", ranger, spatialr, minsize)  ## name that same column with a string containing Meanshift parameter values
+    colnames(seg.ids.df)[idx.params.comb] <- sprintf("rr%ssr%sms%s", ranger, spatialr, minsize)  ## name that same column with a string containing Meanshift parameter values
     
-    ms.par.col <- ms.par.col+1  ## increment index over columns of dataframe of IDs
-        
   }  ## end for on nrow(MS.params.combs)
   
   seg.ids.dt <- as.data.table(seg.ids.df)
@@ -355,7 +371,11 @@ if (params$meanshift.run) {
 } else {
   
   load(file.path(segments.shp.dir, "segIDs.Rdata"))
-  seg.ids.dt <- seg.ids.dt[pix.fires.OK, ]
+  
+  ## Subset dt based on fires actually included in params$fires only if seg.ids.dt contains segment IDs for all the fires
+  if (nrow(seg.ids.dt) == length(pix.fires.OK)) {
+    seg.ids.dt <- seg.ids.dt[pix.fires.OK, ] 
+  }
   
 }
 
@@ -364,7 +384,8 @@ print("Finished segmentation")
 #### START LOOCV OVER FIRES ---------------------------------------------------
 
 ## initialize empty factor vector with appropriate levels to store final class predictions at each round of the Leave-one-out cross-validation loop
-Y.predicted.pixel.raw <- Y.predicted.object.multi <- Y.predicted.object.single <- factor(rep(NA, nrow(allpixels.dt)), levels=levels(allpixels.dt[,CLASS]))
+Y.predicted.dt <- do.call("cbind", replicate(length(params$approaches), as.data.table(factor(rep(NA, nrow(allpixels.dt)), levels=levels(allpixels.dt[,CLASS]))), simplify = FALSE))
+setnames(Y.predicted.dt, params$approaches)
 
 for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
   
@@ -376,160 +397,92 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
   
   allpixels.in.dt <- allpixels.dt[idx.pix.in,]   ## dt with pixels in
   allpixels.out.dt <- allpixels.dt[idx.pix.out,]  ## dt with pixels out
-    
-  ms.par.col <- 1  ## start at 1 the index over columns of dataframe of segment IDs
-  
-  ## fill object level dt with per segment mean and std dev
-  multi.scale.pix.in.dt <- allpixels.in.dt[, c("NAME", "CLASS", params$pixel.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
-  multi.scale.pix.in.dt[, pixIDin:=1:nrow(allpixels.in.dt)]   ## add unique ID to keep order of pixels
-  multisc.predictors <- params$pixel.predictors  ## initialize multi scale predictor names as the base pixel-level predictors
-  multisc.idx <- 1  ## index iterating over the sets of multiscale parameters
 
-  XXXXXXX
-  XXXXXXXX
-  This next loop is also changed to have a single one
-  Merge with next next loop which is also of the same type?
-  Put inside actual classification by RF (+ pixel approach)
-  
+  idx.ms <- 1  ## index for multiscale approaches, different from idx.approach
   
   ## loop over the Meanshift parameters
-  for (idx.params.comb in 1:nrow(MS.params.combs)) {
+  
+  ## TO UNCOMMENT TO RUN WITH FOREACH ON params$approaches
+  # nr.clusters <- length(params$approaches)  ## to uncomment when running in parallel, after successful debugging
+  # cl <- makeCluster(nr.clusters)
+  # registerDoParallel(cl)
+  # Y.predicted.appr <- foreach (idx.approach = 1:length(params$approaches), .combine=cbind, .packages=list.of.packages) %dopar% {
+  ## TO UNCOMMENT TO RUN WITH FOREACH ON params$approaches
     
-    ranger <- MS.params.combs[idx.params.comb, "ranger"]
-    spatialr <- MS.params.combs[idx.params.comb, "spatialr"]
-    minsize <- MS.params.combs[idx.params.comb, "minsize"]
-        
-    scale.name <- sprintf("rr%ssr%sms%s", ranger, spatialr, minsize)  ## name that same column with a string containing Meanshift parameter values
+  ## TO UNCOMMENT TO RUN WITH NORMAL FOR ON params$approaches
+  for (idx.approach in 1:length(params$approaches)) {
+  ## TO UNCOMMENT TO RUN WITH NORMAL FOR ON params$approaches
     
-    allpixels.in.dt[, segID:= seg.ids.dt[idx.pix.in, scale.name, with=FALSE]]  ## temporarily add segment IDs to allpixel.in.dt
+    appr <- params$approaches[idx.approach]
     
-    single.scale.obj.in.dt <- summarize.all(allpixels.in.dt, c("NAME", "segID"), c("X", "Y"))
+    print(sprintf("Approach: %s", appr))
     
-#### MULTI-SCALE PRED RETRIEVAL FIRE IN -----------------------------------------------------------
+    ## Set the default dataset as the allpixels data.tables (in & out), will be augmented with new OBIA features for approaches other than "Pixel" 
+    multi.scale.pix.in.dt <- allpixels.in.dt[, c("NAME", "CLASS", params$pixel.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
+    multi.scale.pix.in.dt[, pixIDin:=1:nrow(allpixels.in.dt)]   ## add unique ID to keep order of pixels
+    multi.scale.pix.out.dt <- allpixels.out.dt[, c("NAME", "CLASS", params$pixel.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
+    multi.scale.pix.out.dt[, pixIDout:=1:nrow(allpixels.out.dt)]
+    predictors <- params$pixel.predictors    ## base pixel-based predictors
     
-    multi.scale.pix.in.dt[, segID:=allpixels.in.dt[,segID]]
-    setkey(multi.scale.pix.in.dt, NAME, segID)
-    cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
-    multi.scale.pix.in.dt <- multi.scale.pix.in.dt[single.scale.obj.in.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
-    multisc.names <- sprintf("Sc%s_%s", multisc.idx, params$obj.predictors)
-    setnames(multi.scale.pix.in.dt, old=params$obj.predictors, new=multisc.names)
-    multisc.predictors <- c(multisc.predictors, multisc.names)  ## growing list of multiscale predictor names 
-    multisc.idx <- multisc.idx + 1  
+    if (appr != "Pixel") {
       
-    ms.par.col <- ms.par.col+1  ## increment index over columns of dataframe of IDs
+      multisc.predictors <- params$pixel.predictors  ## initialize multi scale predictor names as the base pixel-level predictors
+      
+      cmd <- sprintf("multisc.params.df <- params$multisc$ms%d", idx.ms)
+      eval(parse(text=cmd))
+      
+      ## loop over the Meanshift parameters
+      for (idx.params.comb in 1:nrow(multisc.params.df)) {
         
-  }  ## end for on nrow(MS.params.combs)
-  
-  ## segment the left-out fire with the multiscale parameters and, if not already included, with the best parameters
-  ranger.vect.LO <- params$multisc$ranger
-  spatialr.vect.LO <- params$multisc$spatialr
-  minsize.vect.LO <- params$multisc$minsize
-  
-#### START LOOP TO COMPUTE PRED FOR LEFT-OUT FIRE --------------------------------------
-  
-  multi.scale.pix.out.dt <- allpixels.out.dt[, c("NAME", "CLASS", params$pixel.predictors), with=FALSE]  ## initialize dt to store object-level features for all the kept-in pixels
-  multi.scale.pix.out.dt[, pixIDout:=1:nrow(allpixels.out.dt)]
-  multisc.idx <- 1  ## index iterating over the sets of multiscale parameters
-  for (ranger in ranger.vect.LO) {
-    for (spatialr in spatialr.vect.LO) {
-      for (minsize in minsize.vect.LO) {
-        
+        ranger <- multisc.params.df[idx.params.comb, "ranger"]
+        spatialr <- multisc.params.df[idx.params.comb, "spatialr"]
+        minsize <- multisc.params.df[idx.params.comb, "minsize"]
+            
         scale.name <- sprintf("rr%ssr%sms%s", ranger, spatialr, minsize)  ## name that same column with a string containing Meanshift parameter values
-        allpixels.out.dt[, segID:= seg.ids.dt[idx.pix.out, scale.name, with=FALSE]]  # add segment IDs to the df with the left-out pixels
-      
-#### SINGLE-SCALE RF -----------------------------------------------------------
         
-        if ("ObjectSingleSc" %in% params$approach) {
+        multisc.names <- sprintf("Sc%s_%s", idx.params.comb, params$obj.predictors)
         
-          ## if best parameters build singlescale RF model on segments.in and apply on segments.out
-          if (ranger==Kappas.OOB.meanshift.sorted.dt$ranger[1] &
-              spatialr==Kappas.OOB.meanshift.sorted.dt$spatialr[1] &
-              minsize==Kappas.OOB.meanshift.sorted.dt$minsize[1]) {
-          
-            RESULTS$best.scale.names <- c(RESULTS$best.scale.names, scale.name)
-            
-            ## retrieve segment IDs for kept-in fires associated with the best combination of parameters
-            allpixels.in.dt[, segID:= seg.ids.dt[idx.pix.in, scale.name, with=FALSE]]  ## add IDs to the kept-in pixels dt
-            
-            single.scale.obj.in.dt <- summarize.all(allpixels.in.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.in.dt bc it is not needed
-            single.scale.obj.out.dt <- summarize.all(allpixels.out.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.out.dt bc it is not needed
-  
-            nr.vars <- length(params$obj.predictors)
-            if (params$mtry == 'sqrt_nr_var') {
-              mtries <- floor(sqrt(nr.vars))
-            } else if (params$mtry == 'nr_var_div_3') {
-              mtries <- floor(nr.vars/3)
-            }
-           
-            ## set sample size for stratified RF training
-            target.vec <- single.scale.obj.in.dt[[params$targ]]
-            if (params$use.strata) {
-              nmin <- min(table(target.vec))
-              ncl <- length(params$mort.class.labels)
-              sampsize.vect <- rep(nmin, ncl)
-            } else {
-              sampsize.vect <- table(target.vec)
-            }
-            ## train RF on in segments and predict on out segments, always with params$obj.predictors
-            set.seed(params$seed)
-            RF <- randomForest(x=single.scale.obj.in.dt[, params$obj.predictors, with=FALSE], y=target.vec,
-                               strata=target.vec, sampsize=sampsize.vect,
-                               ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
-            
-            Y.predicted.segments.out <- predict(RF, single.scale.obj.out.dt[, params$obj.predictors, with=FALSE], type="response", predict.all=F, nodes=F)
-            
-            ## build a dt with the predicted class for each segment (Y.predicted.segments.out) and the associated segment ID (single.scale.obj.out.df[, "segID"])
-            y.pred.segID.dt <- data.table(segID=single.scale.obj.out.dt[, segID], ypred=Y.predicted.segments.out)
-            
-            ## Join the predicted labels for the segments to the corresponding segID in the complete vector of all images
-            setkey(y.pred.segID.dt, segID) ## set key as the segment IDs column
-            segID.allpixels.out.dt <- data.table(pixIDout=1:nrow(allpixels.out.dt), segID=allpixels.out.dt[,segID])  ## add pixel IDs so that we can retrieve their original order
-            setkey(segID.allpixels.out.dt, "segID")
-            merged.pix.predictions.dt <- segID.allpixels.out.dt[y.pred.segID.dt, ]  ## join to data.table based on a common key with this command allpixels.out.segID.dt[y.pred.segID.dt], then select only ypred as a column
-            setkey(merged.pix.predictions.dt, "pixIDout")  ## resort back to the original order 
-            
-            Y.predicted.object.single[idx.pix.out] <- merged.pix.predictions.dt$ypred
-            
-          } ## end if best parameters
+        multisc.predictors <- c(multisc.predictors, multisc.names)  ## growing list of multiscale predictor names 
         
-        }
+#### MULTI-SCALE PRED RETRIEVAL FIRE IN -----------------------------------------------------------
+        
+        allpixels.in.dt[, segID:= seg.ids.dt[idx.pix.in, scale.name, with=FALSE]]  ## temporarily add segment IDs to allpixel.in.dt
+        single.scale.obj.in.dt <- summarize.all(allpixels.in.dt, c("NAME", "segID"), c("X", "Y"))
+        
+        multi.scale.pix.in.dt[, segID:=allpixels.in.dt[,segID]]
+        setkey(multi.scale.pix.in.dt, NAME, segID)
+        cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
+        
+        multi.scale.pix.in.dt <- multi.scale.pix.in.dt[single.scale.obj.in.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
+        setnames(multi.scale.pix.in.dt, old=params$obj.predictors, new=multisc.names)
 
+        setkey(multi.scale.pix.in.dt, pixIDin) ## re-arrange multi.scale.pix.out.dt to have same order as allpixels.out (setkey() has messed up the order of the rows)
+        
+        
 #### MULTI-SCALE PRED RETRIEVAL FIRE OUT -----------------------------------------------------------
         
-        ## if segmentation scale is among the set specified by params$multisc, store for every pixel the summarized predictor values at the object level
-        if (ranger %in% params$multisc$ranger[multisc.idx] & 
-            spatialr %in% params$multisc$spatialr[multisc.idx] & 
-            minsize %in% params$multisc$minsize[multisc.idx]) {
-          
-          single.scale.obj.out.dt <- summarize.all(allpixels.out.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.out.dt bc it is not needed
-          
-          multi.scale.pix.out.dt[, segID:=allpixels.out.dt[,segID]]
-          setkey(multi.scale.pix.out.dt, NAME, segID)
-          cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
-          multi.scale.pix.out.dt <- multi.scale.pix.out.dt[single.scale.obj.out.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
-          setnames(multi.scale.pix.out.dt, old=params$obj.predictors, new=sprintf("Sc%s_%s", multisc.idx, params$obj.predictors))
-          multisc.idx <- multisc.idx + 1  
-          
-        } ## end if multisc parameters
+        allpixels.out.dt[, segID:= seg.ids.dt[idx.pix.out, scale.name, with=FALSE]]  # add segment IDs to the df with the left-out pixels
+        single.scale.obj.out.dt <- summarize.all(allpixels.out.dt, c("NAME", "segID"), c("X", "Y"))  ## overwrite single.scale.obj.out.dt bc it is not needed
         
-      }
-    }
-  } ## end for on MeanShift parameters for Left-out fire
-  
-  ## re-arrange multi.scale.pix.out.dt to have same order as allpixels.out (setkey() has messed up the order of the rows)
-  setkey(multi.scale.pix.out.dt, pixIDout)
-  setkey(multi.scale.pix.in.dt, pixIDin)
-  
-#### MULTI-SCALE & PIX-BASED RF -----------------------------------------------------------
-  
-  for (appr in params$approach[params$approach %in% c("Pixel", "PixelMultiSc")]) {
+        multi.scale.pix.out.dt[, segID:=allpixels.out.dt[,segID]]
+        setkey(multi.scale.pix.out.dt, NAME, segID)
+        cols <- c("NAME", "segID", params$obj.predictors)  ## colnames of columns to be joined
+        
+        multi.scale.pix.out.dt <- multi.scale.pix.out.dt[single.scale.obj.out.dt[, cols, with=F]]   ## merge data.tables by the defined keys (NAME and segID)
+        setnames(multi.scale.pix.out.dt, old=params$obj.predictors, new=multisc.names)
+        
+        setkey(multi.scale.pix.out.dt, pixIDout) ## re-arrange multi.scale.pix.out.dt to have same order as allpixels.out (setkey() has messed up the order of the rows)
+        
+        
+      } ## end for on nrow(multisc.params.df)
+      
+      predictors <- multisc.predictors ## multiscale predictors (base predictors + different scales set in params$multisc)
+      
+      idx.ms <- idx.ms+1 
+      
+    } ## end if appr != "Pixel"
     
-    ## depending on the type of approach set on which predictors the RF will run
-    if (appr == "Pixel") {
-      predictors <- params$pixel.predictors    ## base pixel-based predictors
-    } else if (appr == "PixelMultiSc") {
-      predictors <- multisc.predictors    ## multiscale predictors (base predictors + different scales set in params$multisc)
-    }
+#### MULTI-SCALE & PIX-BASED RF -----------------------------------------------------------
 
     nr.vars <- length(predictors)
     if (params$mtry == 'sqrt_nr_var') {
@@ -571,31 +524,33 @@ for (fire.out in params$fires) {  ## LOO-CV loop over the fires to leave out
                          ntree=params$ntree, mtry=mtries, nodesize=params$nodesize, importance=params$plot.importance)
     }
     
-    ## predict on dt with all the pixel based variables (at each iteration with different predictors)
-    Y.predicted <- predict(RF, multi.scale.pix.out.dt[, predictors, with=FALSE], type="response", predict.all=F, nodes=F)
+    ## Predict on dt with all the pixel based variables (at each iteration with different predictors)
+    predict(RF, multi.scale.pix.out.dt[, predictors, with=FALSE], type="response", predict.all=F, nodes=F)
     
-    if (appr == "Pixel") {
-      Y.predicted.pixel.raw[idx.pix.out] <- Y.predicted  
-    } else if (appr == "PixelMultiSc") {
-      Y.predicted.object.multi[idx.pix.out] <- Y.predicted  
-    }
-
-  }  ## end for on params$approach
+    ## TO UNCOMMENT IF RUNNING WITH NORMAL FOR ON params$approaches
+    ## Predict on dt with all the pixel based variables (at each iteration with different predictors)
+    Y.predicted <- predict(RF, multi.scale.pix.out.dt[, predictors, with=FALSE], type="response", predict.all=F, nodes=F)
+    ## Fill correspnding elements of dt containing final predicted values
+    Y.predicted.dt[idx.pix.out, appr] <- Y.predicted
+    ## TO UNCOMMENT IF RUNNING WITH NORMAL FOR ON params$approaches
+    
+  } ## end for on params$approaches
+  
+  ## TO UNCOMMENT IF RUNNING WITH FOREACH ON params$approaches
+  # Y.predicted.dt[idx.pix.out, ] <- Y.predicted.appr
+  ## TO UNCOMMENT IF RUNNING WITH FOREACH ON params$approaches
+  
 
 } ## end for on fire.out
 
 #### ASSESSMENT & MAPS -----------------------------------------------------------
 
-for (appr in params$approach) {
+for (idx.approach in 1:length(params$approaches)) {
   
-  if (appr == "Pixel") {
-    Y.predicted <- Y.predicted.pixel.raw  
-  } else if (appr == "ObjectSingleSc") {
-    Y.predicted <- Y.predicted.object.single  
-  } else if (appr == "PixelMultiSc") {
-    Y.predicted <- Y.predicted.object.multi  
-  }
-
+  appr <- params$approaches[idx.approach]
+  
+  Y.predicted <- Y.predicted.dt[[idx.approach]]  ## get column of data.table by index (subsetting a list)
+  
   metrics <- list()
   
   ## overall assessment
@@ -634,11 +589,7 @@ for (appr in params$approach) {
       eval(parse(text=cmd))
       map.kappa <- gsub(".", "p", sprintf("%.3f", map.kappa), fixed=T)
       
-      if (appr == "ObjectSingleSc") {
-        map.name <- sprintf("%s_ClassMap_%s_%s_Kappa%s", fire, appr, RESULTS$best.scale.names[fire.idx], map.kappa)
-      } else {
-        map.name <- sprintf("%s_ClassMap_%s_Kappa%s", fire, appr, map.kappa)
-      }
+      map.name <- sprintf("%s_ClassMap_%s_Kappa%s", fire, appr, map.kappa)
       
       writeRaster(newraster, filename=file.path(maps.dir, map.name, fsep = .Platform$file.sep) , format="GTiff", overwrite=TRUE,  datatype='INT1U')
       
@@ -646,7 +597,7 @@ for (appr in params$approach) {
     }
   }  ## end if write.maps
   
-}  ## end for on params$approach
+}  ## end for on params$approaches
 
 RES.file = file.path(results.dir, 'RESULTS.Rdata', fsep = .Platform$file.sep) 
 save(RESULTS, file = RES.file)
