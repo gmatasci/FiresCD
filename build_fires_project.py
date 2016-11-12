@@ -14,18 +14,19 @@ from mybasemodule import*
 
 params = {}
 
-params['fires'] = ["Abraham", "Cone", "Flett", "Keane", "Leggo", "Levellers", "Liege", "Mcarther", "Overflow", "Perry", "Rail", "Rainbow", "Steephill", "Tanghe"]  ## list of 14 fires to map
-#params['fires'] = ["Abraham", "Flett", "Tanghe"] 
+# params['fires'] = ["Abraham", "Cone", "Flett", "Keane", "Leggo", "Levellers", "Liege", "Mcarther", "Overflow", "Perry", "Rail", "Rainbow", "Steephill", "Tanghe"]  ## list of 14 fires to map
+params['fires'] = ["Abraham", "Keane"]
 
-## Best scales automatically selected with the "ObjectSingleSc" approach
-params['best_scales'] = ["rr25sr5ms5", "rr50sr10ms5", "rr50sr10ms5", "rr25sr30ms5", "rr50sr10ms5", "rr25sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr25sr20ms5", "rr25sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr50sr10ms5"]
+## Best scales automatically selected with the "ObjectSingleSc" approach (RESULTS$best.scale.names)
+# params['best_scales'] = ["rr25sr5ms5", "rr50sr10ms5", "rr50sr10ms5", "rr25sr30ms5", "rr50sr10ms5", "rr25sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr25sr20ms5", "rr25sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr50sr10ms5", "rr50sr10ms5"]
+params['best_scales'] = ["rr50sr10ms5", "rr50sr10ms5"]
 
 root_dir = r'D:\Research\ANALYSES\FiresCD'   ## base directory
 
 fire_img_dir = os.path.join(root_dir, 'Data', r'3_bands')   ## directory of tiff images 
 gt_dir = os.path.join(root_dir, 'Data', r'rasterized_API_polygons')  ## directory of GT layers 
 maps_dir = os.path.join(root_dir, 'Results', r'Maps')  ## directory of predicted maps 
-segment_dir = os.path.join(root_dir, 'Data', r'temp')  ## directory of segmentation shapefiles
+segment_dir = os.path.join(root_dir, 'Data', r'shp_segments')  ## directory of segmentation shapefiles
 
 fire_img_lyr = os.path.join(root_dir, 'MXDs', 'LYRs', r'Abraham_3bands.tif.lyr')  ## path to layer file providing the symbology for the RGB composite
 maps_lyr = os.path.join(root_dir, 'MXDs', 'LYRs', r'Abraham_polygon_rasterized.tif.lyr')  ## path to layer file providing the symbology for the categorical rasters (unique values)
@@ -33,7 +34,7 @@ maps_lyr = os.path.join(root_dir, 'MXDs', 'LYRs', r'Abraham_polygon_rasterized.t
 new_empty_gr_lyr = os.path.join(root_dir, 'MXDs', 'LYRs', r'NewGroupLayer.lyr')  ## path to empty layer file to be loaded to initialize each group
 
 input_mxd = os.path.join(root_dir, 'MXDs', r'empty.mxd')  ## path to empty mxd to load
-output_mxd =  os.path.join(root_dir, 'MXDs', r'Fires.mxd')  ## path to final mxd to save results
+output_mxd =  os.path.join(root_dir, 'Results', r'Fires.mxd')  ## path to final mxd to save results
 
 
 #%% START
@@ -108,4 +109,3 @@ for fire in params['fires']:
 mxd.saveACopy(output_mxd)
 
 toc(tic)
-
